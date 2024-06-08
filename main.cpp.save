@@ -1,0 +1,165 @@
+#include <ctime>
+#include <eigen3/Eigen/Dense>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <vector>
+
+using namespace std;
+using namespace Eigen;
+
+// Function to write data to a CSV file
+// TODO: Implement writing to CSV file for plotting data
+void writeDataToCSV(const vector<string> &dates,
+                    const vector<double> &predictedClose,
+                    const vector<double> &actualClose, const string &filename) {
+  ofstream dataFile(filename);
+  if (!dataFile.is_open()) {
+    cerr << "Error opening file " << filename << " for writing!" << endl;
+    return;
+  }
+
+  // Write header
+  dataFile << "Date,PredictedClose,ActualClose" << endl;
+
+  // Write data
+  for (size_t i = 0; i < dates.size(); ++i) {
+    dataFile << dates[i] << "," << predictedClose[i] << "," << actualClose[i]
+             << endl;
+  }
+
+  dataFile.close();
+
+  cout << "Data written to " << filename << " successfully." << endl;
+}
+
+// Function to convert Excel date to a numerical value
+double excelTime(const string &date, const string &baseDate) {
+  int year, month, day;
+  sscanf(date.c_str(), "%d-%d-%d", &year, &month, &day);
+
+  int baseYear, baseMonth, baseDay;
+  sscanf(baseDate.c_str(), "%d-%d-%d", &baseYear, &baseMonth, &baseDay);
+
+  tm dateTm = {0, 0, 0, day, month - 1, year - 1900};
+  tm baseTm = {0, 0, 0, baseDay, baseMonth - 1, baseYear - 1900};
+
+  time_t dateT = mktime(&dateTm);
+  time_t baseT = mktime(&baseTm);
+
+  return difftime(dateT, baseT) / (60 * 60 * 24);
+}
+
+// Function to convert Excel serial number to MM/DD/YYYY format
+string excelSerialToDate(double serial) {
+  time_t t = (serial - 25569) * 86400; // 25569 is the difference between
+                                       // 1970-01-01 and 1900-01-01 in days
+  tm *timePtr = gmtime(&t);
+
+  char buffer[11];
+  strftime(buffer, 11, "%m/%d/%Y", timePtr);
+  return string(buffer);
+}
+
+int main() {
+  ifstream file("./PSEI.csv");
+  string line;
+
+  vector<double> dates, opens;
+  string baseDate = "1900-01-01";
+  getline(file, line);
+  while (getline(file, line)) {
+    stringstream ss(line);
+    string date, openStr;
+    for (int i = 0; i < 5; ++i) {
+      if (i == 0)
+        getline(ss, date, ',');
+      else
+        getline(ss, openStr, ',');
+    }
+    dates.push_back(excelTime(date, baseDate));
+    cout << "Open Str: " << openStr << "\n";
+    if (openStr != "null")
+      opens.push_back(stod(openStr));
+  }
+
+  int n = opens.size();
+  VectorXd x(n), y(n);
+
+  for (int i = 0; i < n; ++i) {
+    x(i) = dates[i];
+    y(i) = opens[i];
+  }
+
+  double x_sum = x.sum();
+  double y_sum = y.sum();
+  double x2_sum = x.dot(x);
+  double xy_sum = x.dot(y);
+
+  double x_ave = x_sum / n;
+  double y_ave = y_sum / n;
+
+  double m =
+      ((n * xy_sum) - (x_sum * y_sum)) / ((n * x2_sum) - (x_sum * x_sum));
+  double b = y_ave - (m * x_ave);
+
+  VectorXd predictDates(30);
+  for (int i = 0; i < 30; ++i) {
+    predictDates(i) = 45413 + i;
+  }
+  // vector<int> predictedDates(predictDates.data(),
+  //                         predictDates.data() + predictDates.size());
+  vector<string> predictedDates;
+  for (int day = 1; day <= 30; ++day) {
+    ostringstream dateStream;
+    dateStream << setfill('0') << setw(2) << 5 << "/" << setw(2) << day << "/"
+               << 2024;
+    predictedDates.push_back(dateStream.str());
+  }
+
+  VectorXd predictClose = (m * predictDates.array()).matrix() +
+                          VectorXd::Ones(predictDates.size()) * b;
+  vector<double> predictedClose(predictClose.data(),
+                                predictClose.data() + predictClose.size());
+
+  for (int i = 0; i < predictedClose.size(); ++i) {
+    string dateStr = excelSerialToDate(predictDates(i));
+    cout << "Predicted close on " << dateStr << " is " << predictedClose[i]
+         << endl;
+  }
+
+  vector<double> actualClose = {
+      6948.54, 7016.93, 6960.95, 6870.90, 6819.23, 6819.23, 6819.23, 6750.74,
+      6750.74, 6750.24, 6727.27, 6681.26, 6681.26, 6681.26, 6630.43, 6534.94,
+      6432.10, 6481.90, 6551.50, 6551.50, 6551.50, 6484.61, 6463.55, 6538.98,
+      6598.14, 6557.95, 6557.95, 6557.95, 6629.57, 6629.57};
+
+  writeDataToCSV(predictedDates, predictedClose, actualClose, "close_data.csv");
+
+  FILE *gnuplotPipe = popen("gnuplot -persist", "w");
+  if (!gnuplotPipe) {
+    cerr << "Error opening Gnuplot pipe!" << endl;
+    return 1;
+  }
+
+  fprintf(gnuplotPipe, "set terminal pngcairo enhanced font 'Verdana,12'\n");
+  fprintf(gnuplotPipe, "set output 'predicted_vs_actual_close.png'\n");
+  fprintf(gnuplotPipe, "set datafile separator ','\n");
+  fprintf(gnuplotPipe, "set xdata time\n");
+  fprintf(gnuplotPipe, "set timefmt \"%m/%d/%Y\"\n");
+  fprintf(gnuplotPipe, "set format x \"%m/%d\"\n");
+  fprintf(gnuplotPipe, "set title \"Predicted vs Actual Close Over Time\"\n");
+  fprintf(gnuplotPipe, "set xlabel \"Date\"\n");
+  fprintf(gnuplotPipe, "set ylabel \"Close Price\"\n");
+  fprintf(gnuplotPipe, "plot 'close_data.csv' using 1:2 with lines title "
+                       "'Predicted Close',\\\n");
+  fprintf(gnuplotPipe,
+          "     'close_data.csv' using 1:3 with lines title 'Actual Close'\n");
+
+  pclose(gnuplotPipe);
+
+  cout << "Plot generated: predicted_vs_actual_close.png" << endl;
+  return 0;
+}
