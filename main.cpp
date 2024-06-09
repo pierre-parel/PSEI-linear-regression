@@ -28,7 +28,7 @@ void plotData() {
   fprintf(gnuplotPipe, "set ylabel \"Open Price\"\n");
   fprintf(gnuplotPipe, "plot 'open_data.csv' using 1:2 with lines title"
                        "'Predicted Open' lc rgb 'blue' ,\\\n");
-  fprintf(gnuplotPipe, "  'close_data.csv' using 1:3 with lines title "
+  fprintf(gnuplotPipe, "  'open_data.csv' using 1:3 with lines title "
                        "'Actual Open' lc rgb 'red',\\\n");
   pclose(gnuplotPipe);
 
