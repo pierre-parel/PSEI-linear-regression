@@ -23,6 +23,7 @@ void plotData() {
   fprintf(gnuplotPipe, "set xdata time\n");
   fprintf(gnuplotPipe, "set timefmt \"%%m/%%d/%%Y\"\n");
   fprintf(gnuplotPipe, "set format x \"%%m/%%d\"\n");
+  fprintf(gnuplotPipe, "set xrange [\"05/01/2024\":\"05/31/2024\"]\n");
   fprintf(gnuplotPipe, "set title \"Predicted vs Actual Open Over Time\"\n");
   fprintf(gnuplotPipe, "set xlabel \"Date\"\n");
   fprintf(gnuplotPipe, "set ylabel \"Open Price\"\n");
